@@ -1,11 +1,12 @@
-from socket import AF_INET, IPPROTO_TCP, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET, socket
 from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from logging import INFO, basicConfig, info as log, warning as warn
+from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, socket
 from requests.structures import CaseInsensitiveDict
 from email.utils import formatdate
 from lxml.html import fromstring
 from urllib3 import HTTPResponse
 from re import IGNORECASE, split
+from psutil import process_iter
 from threading import Thread
 from time import sleep, time
 from itertools import chain
@@ -37,6 +38,11 @@ class HTTPResponseExt(HTTPResponse):
     encoding: str = "utf-8"
 
 
+def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
+    procs = list(chain.from_iterable([[c for c in p.connections("all") if c.laddr.ip == ip and c.laddr.port in port and c.status == name] for p in process_iter()]))
+    
+    return bool(procs)
+
 def IsHTML(text: str) -> bool:
     return fromstring(text).find(".//*") is not None
 
@@ -58,13 +64,13 @@ def FilterConnection(server: socket, blacklist: list["_RetAddress"] = []) -> tup
     connection, address = server.accept()
 
     if address in blacklist:
-        log(f"Denied connection request to port {PORT} from client at {address[0]}:{address[1]}.")
+        log(f"Denied connection request to port {PORT} from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
 
         connection.close()
 
         raise ConnectionRefusedError()
     
-    log(f"Accepted connection request to port {PORT} from client at {address[0]}:{address[1]}.")
+    log(f"Accepted connection request to port {PORT} from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
 
     return connection, address
 
@@ -149,6 +155,8 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
     if type(body) != bytes:
         body = body.encode("utf-8")
 
+    headers["X-Auto-Generated-By"] = "CreateHTTP (c) GoodCoderBBoy 2022"
+
     head = f"{(method or '').upper()}{(url + ' ' or '/ ') if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
 
     head = head.encode(detect(body)["encoding"])
@@ -158,15 +166,15 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
 
 def Server():
     server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-    server.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    server.bind((ADDRESS, PORT))
-    log(f"Bound to {ADDRESS} on port {PORT}.")
-
-    server.listen(1)
-    log(f"Listening on {ADDRESS}:{PORT}.")
 
     if RESET:
         return ResetSocket(server)
+
+    server.bind((ADDRESS, PORT))
+    log(f"Bound to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
+
+    server.listen(1)
+    log(f"Listening on \x1b[33m{ADDRESS}:{PORT}\x1b[0m.")
 
     session = 0
 
@@ -175,13 +183,11 @@ def Server():
 
         try:
             connection, address = FilterConnection(server) # chooses a client to connect to.
-            client_IP = f"{address[0]}:{address[1]}" # e.g., "127.0.0.1:8080"
+            client_IP = "%s:%s" % address # e.g., "127.0.0.1:8080"
         except ConnectionRefusedError: # client is on blacklist
             continue
         except OSError as e:
-            warn(e)
-
-            return ResetSocket(server, 5)
+            return warn(e)
 
         with connection:
             try:
@@ -202,7 +208,9 @@ def Server():
                     if len(rdata) - 1 and IsAlive(connection): # succesfully recieved data
                         req = ParseHTTP(connection, b"".join(rdata))
 
-                        log(f"Successfully received packet(s) from client at {client_IP}:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + req.text.replace("\n", "\n\t") + "\x1b[0m")
+                        sleep(0.1)
+
+                        log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + req.text.replace("\n", "\n\t") + "\x1b[0m")
 
                         headers = dict(req.headers)
 
@@ -216,29 +224,29 @@ def Server():
                         resp = CreateHTTP(b"Hello, world!", headers={"Content-Type": "text/plain"})
 
                         connection.send(resp)
-                        log(f"Successfully sent packet(s) to client at {client_IP}.")
+                        log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m.")
 
                 sleep(0.1)
 
-                log(f"Client at {client_IP} closed connection: closing socket...")
+                log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             except ConnectionError:
-                log(f"Client at {client_IP} closed connection: closing socket...")
+                log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             
         log(f"Successfully closed socket.")
 
 def Client():
     client = socket(AF_INET, SOCK_STREAM)
-    client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    client.bind(("127.0.0.1", 4242))
-    log("Bound to %s on port %s" % client.getsockname())
 
     if RESET:
         return ResetSocket(client, 0.5)
 
+    client.bind(("127.0.0.1", 4242))
+    log("Bound to \x1b[33m%s\x1b[0m on port \x1b[33m%s\x1b[0m." % client.getsockname())
+
     with client:
         try:
             client.connect((ADDRESS, PORT))
-            log(f"Requested connection to {ADDRESS} on port {PORT}.")
+            log(f"Requested connection to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
 
             sleep(0.1)
 
@@ -248,13 +256,11 @@ def Client():
             client.send(b"HTTP/1.1 200 OK\nContent-Type: text/plain\nConnection: Keep-Alive\n\nHello, world!")
             log(f"Successfully sent packet(s) to server.")
         except ConnectionRefusedError:
-            warn(f"Server denied connection to port {PORT}: closing socket...")
+            warn(f"Server denied connection to port \x1b[33m{PORT}\x1b[0m: closing socket...")
 
             return log("Successfully closed socket.")
         except OSError as e:
-            warn(e)
-
-            return ResetSocket(client, 5)
+            return warn(e)
 
         try:
             if not WaitReadable(client, 2):
@@ -279,7 +285,7 @@ def Client():
         except ConnectionError:
             sleep(0.1)
 
-            warn(f"Server closed connection to port {PORT} unexpectedly: closing socket...")
+            warn(f"Server closed connection to port \x1b[33m{PORT}\x1b[0m unexpectedly: closing socket...")
 
             return log("Successfully closed socket.")
 
@@ -287,6 +293,14 @@ def Client():
 
 
 if __name__ == "__main__":
+    t = time()
+
+    while ProcessAlive("TIME_WAIT", ADDRESS, [4242, PORT]):
+        log(f"TIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A\r")
+
+    log("")
+
+
     serverT = Thread(target=Server, name="Server", daemon=True)
     clientT = Thread(target=Client, name="Client", daemon=True)
 
