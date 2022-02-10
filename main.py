@@ -1,12 +1,12 @@
+from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from logging import INFO, basicConfig, info as log, warning as warn
-from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, socket
 from requests.structures import CaseInsensitiveDict
+from psutil import NoSuchProcess, process_iter
 from email.utils import formatdate
 from lxml.html import fromstring
 from urllib3 import HTTPResponse
 from re import IGNORECASE, split
-from psutil import process_iter
 from threading import Thread
 from time import sleep, time
 from itertools import chain
@@ -18,10 +18,20 @@ from os import PathLike
 if TYPE_CHECKING:
     from socket import _RetAddress
 
+
+with open("domain.txt") as f:
+    DOMAIN = f.read().strip()
+
+
 basicConfig(format="(%(asctime)s) %(threadName)s: %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
 
-ADDRESS = "127.0.0.1"
-PORT = 5000
+try:
+    ADDRESS = gethostbyname(DOMAIN)
+    PORT = 8080
+except:
+    ADDRESS = "127.0.0.1"
+    PORT = 5000
+
 RESET = False
 
 
@@ -39,8 +49,11 @@ class HTTPResponseExt(HTTPResponse):
 
 
 def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
-    procs = list(chain.from_iterable([[c for c in p.connections("all") if c.laddr.ip == ip and c.laddr.port in port and c.status == name] for p in process_iter()]))
-    
+    try:
+        procs = list(chain.from_iterable([[c for c in p.connections("all") if c.laddr.ip == ip and c.laddr.port in port and c.status == name] for p in process_iter()]))
+    except (ProcessLookupError, NoSuchProcess):
+        prcos = []
+
     return bool(procs)
 
 def IsHTML(text: str) -> bool:
@@ -75,11 +88,13 @@ def FilterConnection(server: socket, blacklist: list["_RetAddress"] = []) -> tup
     return connection, address
 
 def ParseHTTP(sender: socket, raw: bytes) -> HTTPResponseExt:
+    raw = b"\n".join(raw.splitlines()) # normalise line endings
+    
     try:
         head, body = raw.split(b"\n\n", 1)
     except:
         head, body = raw, b""
-    
+
     if b"content-type" in head or b"content-encoding" in head:
         if b"content-type" in head: 
             encoding = head.split(b"charset", 1)[-1].split(b"\n")[0].strip().removeprefix(b"=").strip().decode("utf-8")
@@ -88,18 +103,24 @@ def ParseHTTP(sender: socket, raw: bytes) -> HTTPResponseExt:
     else:
         encoding = detect(raw)["encoding"]
 
-    raw = b"\n".join(raw.splitlines()) # normalise line endings
     text = raw.decode(encoding)
 
-    head = head.decode(encoding).lower()
+    head = head.decode(encoding).lower().strip()
     status = head.split("\n")[0].strip()
-    headers = [h.split(": ") for h in head.split("\n")[1:]]
-
+    headers = [h.split(":", 1) for h in head.split("\n")[1:] if h.strip()]
     headers = CaseInsensitiveDict({k.strip():v.strip() for k, v in headers})
+    
     headers["content-encoding"] = encoding
 
-    status_code = [int(d) for d in status.split() if d.isdecimal()][-1]
-    reason = status.rsplit(str(status_code), 1)[-1].strip().upper()
+    status_code = [int(d) for d in status.split() if d.isdecimal()]
+
+    if status_code:
+        status_code = status_code[-1]
+        reason = status.rsplit(str(status_code), 1)[-1].strip().upper()
+    else:
+        status_code = 200
+        reason = "OK"
+
     if split("http/", text.split("\n", 1)[0], 1, IGNORECASE)[0].strip():
         url = split("http/", text.split("\n", 1)[0], 1, IGNORECASE)[0].strip().split(maxsplit=1)[-1]
     else:
@@ -139,7 +160,7 @@ def SendShutdown(connection: socket, recipient: str) -> bool:
 
         return False
 
-def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: PathLike | None=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus.OK, headers: Mapping[str, str]={}, autolength: bool=True) -> bytes:
+def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: PathLike | None=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus.OK, headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
     if type(headers) != CaseInsensitiveDict:
         headers = CaseInsensitiveDict(headers)
 
@@ -155,13 +176,16 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
     if type(body) != bytes:
         body = body.encode("utf-8")
 
+    headers["Content-Security-Policy"] = "upgrade-insecure-requests"
+    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
     headers["X-Auto-Generated-By"] = "CreateHTTP (c) GoodCoderBBoy 2022"
 
     head = f"{(method or '').upper()}{(url + ' ' or '/ ') if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
 
     head = head.encode(detect(body)["encoding"])
 
-    return head + body
+    return head + body, status._value_
 
 
 def Server():
@@ -221,14 +245,14 @@ def Server():
                             pass
 
                     if select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection):
-                        resp = CreateHTTP(b"Hello, world!", headers={"Content-Type": "text/plain"})
+                        resp, status = CreateHTTP(b"Hello, world!", headers={"Content-Type": "text/plain"})
 
                         connection.send(resp)
-                        log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m.")
+                        log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
 
                 sleep(0.1)
 
-                log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
+                log(f"Client at] \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             except ConnectionError:
                 log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             
@@ -240,7 +264,7 @@ def Client():
     if RESET:
         return ResetSocket(client, 0.5)
 
-    client.bind(("127.0.0.1", 4242))
+    client.bind((ADDRESS, 4242))
     log("Bound to \x1b[33m%s\x1b[0m on port \x1b[33m%s\x1b[0m." % client.getsockname())
 
     with client:
@@ -296,17 +320,18 @@ if __name__ == "__main__":
     t = time()
 
     while ProcessAlive("TIME_WAIT", ADDRESS, [4242, PORT]):
-        log(f"TIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A\r")
+        log(f"\rTIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A")
 
     log("")
 
 
     serverT = Thread(target=Server, name="Server", daemon=True)
-    clientT = Thread(target=Client, name="Client", daemon=True)
+    # clientT = Thread(target=Client, name="Client", daemon=True)
 
     serverT.start()
+    serverT.join()
 
-    clientT.start()
-    clientT.join()
+    # clientT.start()
+    # clientT.join()
     
     sleep(2)
