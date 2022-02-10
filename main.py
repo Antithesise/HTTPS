@@ -73,7 +73,7 @@ def WaitReadable(connection: socket, timeout: float | None=None) -> bool:
 
     return True
 
-def FilterConnection(server: socket, blacklist: list["_RetAddress"] = []) -> tuple[socket, "_RetAddress"] | None:
+def FilterConnection(server: socket, blacklist: list["_RetAddress"]=[]) -> tuple[socket, "_RetAddress"] | None:
     connection, address = server.accept()
 
     if address in blacklist:
@@ -87,7 +87,7 @@ def FilterConnection(server: socket, blacklist: list["_RetAddress"] = []) -> tup
 
     return connection, address
 
-def ParseHTTP(sender: socket, raw: bytes) -> HTTPResponseExt:
+def ParseHTTP(raw: bytes) -> HTTPResponseExt:
     raw = b"\n".join(raw.splitlines()) # normalise line endings
     
     try:
@@ -140,7 +140,7 @@ def ParseHTTP(sender: socket, raw: bytes) -> HTTPResponseExt:
 
     return res
 
-def ResetSocket(s: socket, delay: float = 0) -> None:
+def ResetSocket(s: socket, delay: float=0) -> None:
     s.close()
 
     log(f"Successfully closed socket.")
@@ -230,7 +230,7 @@ def Server():
                         connection.settimeout(to)
 
                     if len(rdata) - 1 and IsAlive(connection): # succesfully recieved data
-                        req = ParseHTTP(connection, b"".join(rdata))
+                        req = ParseHTTP(b"".join(rdata))
 
                         sleep(0.1)
 
@@ -301,7 +301,7 @@ def Client():
                 client.settimeout(to)
 
             if len(rdata) - 1  and IsAlive(client): # succesfully recieved data
-                resp: HTTPResponseExt = ParseHTTP(client, b"".join(rdata))
+                resp: HTTPResponseExt = ParseHTTP(b"".join(rdata))
 
                 log(f"Successfully received packet(s) from server:\n\t" + ("\x1b[32m" if resp.ok else "\x1b[31m") + resp.text.replace("\n", "\n\t") + "\x1b[0m")
 
