@@ -273,17 +273,17 @@ def Server():
                                 fname += ".html"
 
                             try:
-                                with open(f"{fpath}/{fname}") as f:
-                                    content = f.read()
+                                with open(f"{fpath}{'/' if fpath else ''}{fname}") as f:
+                                    content, status = f.read(), HTTPStatus.OK
 
-                                mimetype = GetMIMEType(f"{fpath}/{fname}")
-                            except:
-                                with open(f"/404.html") as f:
-                                    content = f.read()
+                                mimetype = GetMIMEType(f"{fpath}{'/' if fpath else ''}{fname}")
+                            except FileNotFoundError:
+                                with open(f"404.html") as f:
+                                    content, status = f.read(), HTTPStatus.NOT_FOUND
 
                                 mimetype = "text/html"
                                 
-                        resp, status = CreateHTTP(content, status=HTTPStatus.NOT_FOUND, headers={"Content-Type": mimetype})
+                        resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
                         
                         rec = time()
                     else:
