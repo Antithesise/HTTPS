@@ -76,7 +76,7 @@ def IsAlive(connection: socket, timeout: int | None=None) -> bool:
     except:
         r = []
 
-    return connection in r and (True if timeout is None else time() - timeout < 60)
+    return connection in r and (True if timeout is None else time() - timeout < 5)
 
 def WaitReadable(connection: socket, timeout: float | None=None) -> bool:
     t = time()
