@@ -267,7 +267,7 @@ def Server():
                             else:
                                 path = "/index"
                             
-                            fpath, fname = path.rsplit("/", 1)[-1]
+                            fpath, fname = path.rsplit("/", 1)
 
                             if "." not in fname:
                                 fname += ".html"
