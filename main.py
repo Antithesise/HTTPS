@@ -204,7 +204,7 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
     return head + body, status._value_
 
 
-def ServerSocket(connection: socket, address: _RetAddress):
+# def ServerSocket(connection: socket, address: _RetAddress):
 
 def Server():
     server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
