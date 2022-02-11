@@ -1,5 +1,5 @@
+from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, NamedTuple, Optional
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
-from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from logging import INFO, basicConfig, info as log, warning as warn
 from requests.structures import CaseInsensitiveDict
 from psutil import NoSuchProcess, process_iter
@@ -14,6 +14,7 @@ from http import HTTPStatus
 from chardet import detect
 from select import select
 from os import PathLike
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from socket import _RetAddress
@@ -47,20 +48,29 @@ class HTTPResponseExt(HTTPResponse):
     request_url: Optional[str] = None
     encoding: str = "utf-8"
 
+class Session(NamedTuple):
+    start: float
+    id: str
+
 
 def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
     try:
         procs = list(chain.from_iterable([[c for c in p.connections("all") if c.laddr.ip == ip and c.laddr.port in port and c.status == name] for p in process_iter()]))
     except (ProcessLookupError, NoSuchProcess):
-        prcos = []
+        procs = []
 
     return bool(procs)
 
 def IsHTML(text: str) -> bool:
     return fromstring(text).find(".//*") is not None
 
-def IsAlive(connection: socket) -> bool:
-    return connection in chain.from_iterable(select([connection], [connection], [], 5))
+def IsAlive(connection: socket, timeout: int | None=None) -> bool:
+    try:
+        r = list(chain.from_iterable(select([connection], [connection], [], 5)))
+    except:
+        r = []
+
+    return connection in r and (True if timeout is None else time() - timeout < 60)
 
 def WaitReadable(connection: socket, timeout: float | None=None) -> bool:
     t = time()
@@ -165,7 +175,7 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
         headers = CaseInsensitiveDict(headers)
 
     headers["Date"] = (headers.get("date") or formatdate(timeval=None, localtime=False, usegmt=True))
-    headers["Connection"] = (headers.get("connection") or "keep-alive")
+    headers["Connection"] = (headers.get("connection") or "close")
 
     if body is None:
         body, status = "", HTTPStatus.NO_CONTENT
@@ -197,13 +207,9 @@ def Server():
     server.bind((ADDRESS, PORT))
     log(f"Bound to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
 
-    server.listen(1)
-    log(f"Listening on \x1b[33m{ADDRESS}:{PORT}\x1b[0m.")
-
-    session = 0
-
     while True:
-        session += 1
+        server.listen()
+        log(f"Listening on \x1b[33m{ADDRESS}:{PORT}\x1b[0m.")
 
         try:
             connection, address = FilterConnection(server) # chooses a client to connect to.
@@ -212,16 +218,22 @@ def Server():
             continue
         except OSError as e:
             return warn(e)
+        
+        session = Session(time(), f"{client_IP}-{str(uuid4())}")
+
+        log(f"Started session {session}")
 
         with connection:
             try:
                 if not WaitReadable(connection, 5):
                     break
 
-                while IsAlive(connection):
+                rec = session.start
+
+                while IsAlive(connection, rec):
                     rdata = [b""]
 
-                    while select([connection], [], [], 0)[0] and IsAlive(connection): # connection is ready to read
+                    while select([connection], [], [], 0)[0] and IsAlive(connection, rec): # connection is ready to read
                         to = connection.gettimeout()
                         connection.settimeout(0.1)
 
@@ -229,7 +241,7 @@ def Server():
 
                         connection.settimeout(to)
 
-                    if len(rdata) - 1 and IsAlive(connection): # succesfully recieved data
+                    if len(rdata) - 1 and IsAlive(connection, rec): # succesfully recieved data
                         req = ParseHTTP(b"".join(rdata))
 
                         sleep(0.1)
@@ -243,16 +255,20 @@ def Server():
 
                         elif req.head.startswith("get"):
                             pass
+                    else:
+                        rec = time()
 
-                    if select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection):
+                    if select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
                         resp, status = CreateHTTP(b"Hello, world!", headers={"Content-Type": "text/plain"})
 
                         connection.send(resp)
                         log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
+                    else:
+                        rec = time()
 
                 sleep(0.1)
 
-                log(f"Client at] \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
+                log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             except ConnectionError:
                 log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             
