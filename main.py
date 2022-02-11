@@ -56,7 +56,7 @@ class Session(NamedTuple):
 
 def GetMIMEType(fname: str) -> str:
     mime = Magic(mime=True)
-    
+
     return mime.from_file(fname)
 
 def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
@@ -98,14 +98,14 @@ def FilterConnection(server: socket, blacklist: list["_RetAddress"]=[]) -> tuple
         connection.close()
 
         raise ConnectionRefusedError()
-    
+
     log(f"Accepted connection request to port {PORT} from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
 
     return connection, address
 
 def ParseHTTP(raw: bytes) -> HTTPResponseExt:
     raw = b"\n".join(raw.splitlines()) # normalise line endings
-    
+
     try:
         head, body = raw.split(b"\n\n", 1)
     except:
@@ -125,7 +125,7 @@ def ParseHTTP(raw: bytes) -> HTTPResponseExt:
     status = head.split("\n")[0].strip()
     headers = [h.split(":", 1) for h in head.split("\n")[1:] if h.strip()]
     headers = CaseInsensitiveDict({k.strip():v.strip() for k, v in headers})
-    
+
     headers["content-encoding"] = encoding
 
     status_code = [int(d) for d in status.split() if d.isdecimal()]
@@ -226,7 +226,7 @@ def Server():
             continue
         except OSError as e:
             return warn(e)
-        
+
         session = Session(time(), f"{client_IP}-{str(uuid4())}")
 
         log(f"Started session {session}")
@@ -266,7 +266,7 @@ def Server():
                                 path = "/" + (req.request_url.strip("/") or "index")
                             else:
                                 path = "/index"
-                            
+
                             fpath, fname = path.rsplit("/", 1)
 
                             if "." not in fname:
@@ -282,9 +282,9 @@ def Server():
                                     content, status = f.read(), HTTPStatus.NOT_FOUND
 
                                 mimetype = "text/html"
-                                
+
                         resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
-                        
+
                         rec = time()
                     else:
                         resp = None
@@ -292,7 +292,7 @@ def Server():
                     if resp and select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
                         connection.send(resp)
                         log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
-                        
+
                         rec = time()
 
                 sleep(0.1)
@@ -300,7 +300,7 @@ def Server():
                 log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             except ConnectionError:
                 log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
-            
+
         log(f"Successfully closed socket.")
 
 def Client():
@@ -340,7 +340,7 @@ def Client():
             while select([client], [], [], 0.1)[0]:
                 to = client.gettimeout()
                 client.settimeout(0.1)
-                
+
                 rdata.append(client.recv(1024))
 
                 client.settimeout(to)
@@ -378,5 +378,5 @@ if __name__ == "__main__":
 
     # clientT.start()
     # clientT.join()
-    
-    sleep(2)
+
+    # sleep(2)
