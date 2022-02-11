@@ -13,6 +13,7 @@ from itertools import chain
 from http import HTTPStatus
 from chardet import detect
 from select import select
+from magic import Magic
 from os import PathLike
 from uuid import uuid4
 
@@ -52,6 +53,11 @@ class Session(NamedTuple):
     start: float
     id: str
 
+
+def GetMIMEType(fname: str) -> str:
+    mime = Magic(mime=True)
+    
+    return mime.from_file(fname)
 
 def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
     try:
@@ -132,7 +138,7 @@ def ParseHTTP(raw: bytes) -> HTTPResponseExt:
         reason = "OK"
 
     if split("http/", text.split("\n", 1)[0], 1, IGNORECASE)[0].strip():
-        url = split("http/", text.split("\n", 1)[0], 1, IGNORECASE)[0].strip().split(maxsplit=1)[-1]
+        url = split("http/", text.split("\n", 1)[0], 1, IGNORECASE)[0].strip().split(maxsplit=1)[-1].strip()
     else:
         url = None
 
@@ -198,6 +204,8 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
     return head + body, status._value_
 
 
+# def ServerSocket(connection: socket, address: _RetAddress):
+
 def Server():
     server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
 
@@ -235,7 +243,7 @@ def Server():
 
                     while select([connection], [], [], 0)[0] and IsAlive(connection, rec): # connection is ready to read
                         to = connection.gettimeout()
-                        connection.settimeout(0.1)
+                        connection.settimeout(0)
 
                         rdata.append(connection.recv(1024))
 
@@ -254,13 +262,34 @@ def Server():
                             break
 
                         elif req.head.startswith("get"):
-                            pass
+                            if req.request_url:
+                                path = "/" + (req.request_url.strip("/") or "index")
+                            else:
+                                path = "/index"
+                            
+                            fpath, fname = path.rsplit("/", 1)[-1]
+
+                            if "." not in fname:
+                                fname += ".html"
+
+                            try:
+                                with open(f"{fpath}/{fname}") as f:
+                                    content = f.read()
+
+                                mimetype = GetMIMEType(f"{fpath}/{fname}")
+                            except:
+                                with open(f"/404.html") as f:
+                                    content = f.read()
+
+                                mimetype = "text/html"
+                                
+                        resp, status = CreateHTTP(content, status=HTTPStatus.NOT_FOUND, headers={"Content-Type": mimetype})
                         
                         rec = time()
+                    else:
+                        resp = None
 
-                    if select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
-                        resp, status = CreateHTTP(b"Hello, world!", headers={"Content-Type": "text/plain"})
-
+                    if resp and select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
                         connection.send(resp)
                         log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
                         
