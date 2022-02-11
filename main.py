@@ -255,7 +255,7 @@ def Server():
 
                         elif req.head.startswith("get"):
                             pass
-                    else:
+                        
                         rec = time()
 
                     if select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
@@ -263,7 +263,7 @@ def Server():
 
                         connection.send(resp)
                         log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
-                    else:
+                        
                         rec = time()
 
                 sleep(0.1)
