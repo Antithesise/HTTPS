@@ -25,7 +25,7 @@ with open("domain.txt") as f:
     DOMAIN = f.read().strip()
 
 
-basicConfig(format="(%(asctime)s) %(threadName)s: %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
+basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
 
 try:
     ADDRESS = gethostbyname(DOMAIN)
@@ -81,7 +81,7 @@ def IsAlive(connection: socket, timeout: int | None=None) -> bool:
 def WaitReadable(connection: socket, timeout: float | None=None) -> bool:
     t = time()
 
-    while connection not in select([connection], [], [])[0]:
+    while connection not in select([connection], [], [], 0)[0]:
         if time() - t > timeout or not IsAlive(connection):
             warn("Connection timed out...")
 
@@ -117,7 +117,7 @@ def ParseHTTP(raw: bytes) -> HTTPResponseExt:
         else:
             encoding = head.split(b"content-encoding", 1)[-1].split(b"\n")[0].strip().decode("utf-8")
     else:
-        encoding = detect(raw)["encoding"]
+        encoding = (detect(raw)["encoding"] or "utf-8")
 
     text = raw.decode(encoding)
 
@@ -204,7 +204,90 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
     return head + body, status._value_
 
 
-# def ServerSocket(connection: socket, address: _RetAddress):
+def ServerSocket(connection: socket, address: "_RetAddress"):
+    client_IP = "%s:%s" % address # e.g., "127.0.0.1:8080"
+
+    session = Session(time(), f"{address[0]}:{address[1]}-{str(uuid4())}")
+    log(f"Started session (id={session.id})")
+
+    with connection:
+        try:
+            rec = session.start
+
+            if not WaitReadable(connection, 5):
+                warn(f"Connection with client at \x1b[33m{client_IP}\x1b[0m timed out: closing connection...")
+
+                raise ConnectionAbortedError
+
+            while IsAlive(connection, rec):
+                rdata = [b""]
+
+                while select([connection], [], [], 0)[0] and IsAlive(connection, rec): # connection is ready to read
+                    to = connection.gettimeout()
+                    connection.settimeout(0)
+
+                    rdata.append(connection.recv(1024))
+
+                    connection.settimeout(to)
+
+                if len(rdata) - 1 and IsAlive(connection, rec): # succesfully recieved data
+                    try:
+                        req = ParseHTTP(b"".join(rdata))
+                    except Exception:
+                        raise ConnectionAbortedError
+
+                    sleep(0.1)
+
+                    log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + req.text.replace("\n", "\n\t") + "\x1b[0m")
+
+                    headers = dict(req.headers)
+
+                    if "close" in headers.get("connection"):
+                        break
+
+                    elif req.head.startswith("get"):
+                        if req.request_url:
+                            path = "/" + (req.request_url.strip("/") or "index")
+                        else:
+                            path = "/index"
+
+                        fpath, fname = path.rsplit("/", 1)
+
+                        if "." not in fname:
+                            fname += ".html"
+
+                        try:
+                            with open(f"{fpath}{'/' if fpath else ''}{fname}") as f:
+                                content, status = f.read(), HTTPStatus.OK
+
+                            mimetype = GetMIMEType(f"{fpath}{'/' if fpath else ''}{fname}")
+                        except FileNotFoundError:
+                            with open(f"404.html") as f:
+                                content, status = f.read(), HTTPStatus.NOT_FOUND
+
+                            mimetype = "text/html"
+
+                    resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
+
+                    rec = time()
+                else:
+                    resp = None
+
+                if resp and select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
+                    connection.send(resp)
+                    log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
+
+                    rec = time()
+
+            sleep(0.1)
+
+            log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
+        except ConnectionError:
+            log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
+        except ConnectionAbortedError:
+            pass
+
+    log(f"Successfully closed socket.")
 
 def Server():
     server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
@@ -215,98 +298,22 @@ def Server():
     server.bind((ADDRESS, PORT))
     log(f"Bound to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
 
+    connections = []
+
     while True:
         server.listen()
         log(f"Listening on \x1b[33m{ADDRESS}:{PORT}\x1b[0m.")
 
         try:
             connection, address = FilterConnection(server) # chooses a client to connect to.
-            client_IP = "%s:%s" % address # e.g., "127.0.0.1:8080"
+
+            connections.append(Thread(name=f"Server-{address[0]}:{address[1]}", target=ServerSocket, args=(connection, address), daemon=True))
+
+            connections[-1].start()
         except ConnectionRefusedError: # client is on blacklist
             continue
         except OSError as e:
-            return warn(e)
-
-        session = Session(time(), f"{client_IP}-{str(uuid4())}")
-
-        log(f"Started session {session}")
-
-        with connection:
-            try:
-                rec = session.start
-
-                if not WaitReadable(connection, 5):
-                    warn(f"Connection with client at \x1b[33m{client_IP}\x1b[0m timed out: closing connection...")
-
-                    raise ConnectionAbortedError
-
-                while IsAlive(connection, rec):
-                    rdata = [b""]
-
-                    while select([connection], [], [], 0)[0] and IsAlive(connection, rec): # connection is ready to read
-                        to = connection.gettimeout()
-                        connection.settimeout(0)
-
-                        rdata.append(connection.recv(1024))
-
-                        connection.settimeout(to)
-
-                    if len(rdata) - 1 and IsAlive(connection, rec): # succesfully recieved data
-                        req = ParseHTTP(b"".join(rdata))
-
-                        sleep(0.1)
-
-                        log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + req.text.replace("\n", "\n\t") + "\x1b[0m")
-
-                        headers = dict(req.headers)
-
-                        if "close" in headers.get("connection"):
-                            break
-
-                        elif req.head.startswith("get"):
-                            if req.request_url:
-                                path = "/" + (req.request_url.strip("/") or "index")
-                            else:
-                                path = "/index"
-
-                            fpath, fname = path.rsplit("/", 1)
-
-                            if "." not in fname:
-                                fname += ".html"
-
-                            try:
-                                with open(f"{fpath}{'/' if fpath else ''}{fname}") as f:
-                                    content, status = f.read(), HTTPStatus.OK
-
-                                mimetype = GetMIMEType(f"{fpath}{'/' if fpath else ''}{fname}")
-                            except FileNotFoundError:
-                                with open(f"404.html") as f:
-                                    content, status = f.read(), HTTPStatus.NOT_FOUND
-
-                                mimetype = "text/html"
-
-                        resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
-
-                        rec = time()
-                    else:
-                        resp = None
-
-                    if resp and select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
-                        connection.send(resp)
-                        log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
-
-                        rec = time()
-
-                sleep(0.1)
-
-                log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
-            except ConnectionError:
-                log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
-            except ConnectionAbortedError:
-                pass
-
-
-        log(f"Successfully closed socket.")
+            return warn(e)        
 
 def Client():
     client = socket(AF_INET, SOCK_STREAM)
