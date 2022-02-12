@@ -233,10 +233,12 @@ def Server():
 
         with connection:
             try:
-                if not WaitReadable(connection, 5):
-                    break
-
                 rec = session.start
+
+                if not WaitReadable(connection, 5):
+                    warn(f"Connection with client at \x1b[33m{client_IP}\x1b[0m timed out: closing connection...")
+
+                    raise ConnectionAbortedError
 
                 while IsAlive(connection, rec):
                     rdata = [b""]
@@ -300,6 +302,9 @@ def Server():
                 log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
             except ConnectionError:
                 log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
+            except ConnectionAbortedError:
+                pass
+
 
         log(f"Successfully closed socket.")
 
