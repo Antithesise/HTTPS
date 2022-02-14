@@ -234,6 +234,8 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     try:
                         req = ParseHTTP(b"".join(rdata))
                     except Exception:
+                        warn(f"Client at \x1b[33m{client_IP}\x1b[0m sent chunked data, which is not yet supported: closing socket...")
+
                         raise ConnectionAbortedError
 
                     sleep(0.1)
