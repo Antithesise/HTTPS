@@ -2,6 +2,7 @@ from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, NamedTuple, Option
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from logging import INFO, basicConfig, info as log, warning as warn
 from requests.structures import CaseInsensitiveDict
+from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
 from email.utils import formatdate
 from lxml.html import fromstring
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 
 with open("domain.txt") as f:
-    DOMAIN = f.read().strip()
+    DOMAIN, CERTPATH = f.read().strip().split(";", 1)
 
 
 basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
