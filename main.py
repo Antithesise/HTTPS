@@ -22,9 +22,8 @@ if TYPE_CHECKING:
     from socket import _RetAddress
 
 
-with open("domain.txt") as f:
-    DOMAIN, CERTPATH = f.read().strip().split(";", 1)
-
+with open("metadata.txt") as f:
+    DOMAIN, CERTPATH, CONTENTPATH = f.read().strip().split(";", 2)
 
 basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -250,21 +249,21 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                     elif req.head.startswith("get"):
                         if req.request_url:
-                            path = "/" + (req.request_url.strip("/") or "index")
+                            path = (req.request_url.strip("/") or "index")
                         else:
-                            path = "/index"
+                            path = "index"
 
-                        fpath, fname = path.rsplit("/", 1)
-
-                        if "." not in fname:
-                            fname += ".html"
+                        if "." not in path.rsplit("/", 1)[-1]:
+                            path += ".html"
 
                         try:
-                            with open(f"{fpath}{'/' if fpath else ''}{fname}") as f:
+                            with open(f"{CONTENTPATH}{path}") as f:
                                 content, status = f.read(), HTTPStatus.OK
 
-                            mimetype = GetMIMEType(f"{fpath}{'/' if fpath else ''}{fname}")
+                            mimetype = GetMIMEType(CONTENTPATH + path)
                         except FileNotFoundError:
+                            log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+
                             with open(f"404.html") as f:
                                 content, status = f.read(), HTTPStatus.NOT_FOUND
 
