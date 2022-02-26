@@ -264,7 +264,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                         except FileNotFoundError:
                             log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
 
-                            with open(f"404.html") as f:
+                            with open(f"{CONTENTPATH}404.html") as f:
                                 content, status = f.read(), HTTPStatus.NOT_FOUND
 
                             mimetype = "text/html"
