@@ -247,7 +247,10 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                     elif req.head.startswith("get"):
                         if req.request_url:
-                            path, post = (req.request_url.strip("/") or "index").split("?")
+                            try:
+                                path, post = (req.request_url.strip("/") or "index").split("?", 1)
+                            except ValueError:
+                                path, post = (req.request_url.strip("/") or "index"), ""
                         else:
                             path = "index"
 
