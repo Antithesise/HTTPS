@@ -4,6 +4,7 @@ from logging import INFO, basicConfig, info as log, warning as warn
 from requests.structures import CaseInsensitiveDict
 from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
+from mimetypes import add_type, guess_type
 from email.utils import formatdate
 from lxml.html import fromstring
 from urllib3 import HTTPResponse
@@ -15,7 +16,6 @@ from fnmatch import fnmatch
 from http import HTTPStatus
 from chardet import detect
 from select import select
-from magic import Magic
 from os import PathLike
 from uuid import uuid4
 
@@ -33,6 +33,8 @@ basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", 
 
 context = create_default_context(Purpose.CLIENT_AUTH)
 context.load_cert_chain(certfile=f"{CERTPATH}{DOMAIN}.crt", keyfile=f"{CERTPATH}{DOMAIN}.key")
+
+add_type("text/css", ".css", True)
 
 try:
     ADDRESS = gethostbyname(DOMAIN)
@@ -58,9 +60,7 @@ class HTTPResponseExt(HTTPResponse):
 
 
 def GetMIMEType(fname: str) -> str:
-    mime = Magic(mime=True)
-
-    return mime.from_file(fname)
+    return (guess_type(fname)[0] or "text/plain")
 
 def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
     try:
