@@ -31,6 +31,9 @@ with open(CONTENTPATH + "exclude.glob") as f:
 
 basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
 
+context = create_default_context(Purpose.CLIENT_AUTH)
+context.load_cert_chain(certfile=f"{CERTPATH}{DOMAIN}.crt", keyfile=f"{CERTPATH}{DOMAIN}.key")
+
 try:
     ADDRESS = gethostbyname(DOMAIN)
     PORT = 8080
@@ -316,7 +319,7 @@ def Server():
         try:
             connection, address = FilterConnection(server) # chooses a client to connect to.
 
-            connections.append(Thread(name=f"Server-{address[0]}:{address[1]}", target=ServerSocket, args=(connection, address), daemon=True))
+            connections.append(Thread(name=f"Server-{address[0]}:{address[1]}", target=ServerSocket, args=(context.wrap_socket(connection, server_side=True), address), daemon=True))
 
             connections[-1].start()
         except ConnectionRefusedError: # client is on blacklist
@@ -332,7 +335,4 @@ if __name__ == "__main__":
         log(f"\rTIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A")
 
 
-    serverT = Thread(target=Server, name="Server", daemon=True)
-
-    serverT.start()
-    serverT.join()
+    target=Server()
