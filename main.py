@@ -56,10 +56,6 @@ class HTTPResponseExt(HTTPResponse):
     request_url: Optional[str] = None
     encoding: str = "utf-8"
 
-class Session(NamedTuple):
-    start: float
-    id: str
-
 
 def GetMIMEType(fname: str) -> str:
     mime = Magic(mime=True)
@@ -214,12 +210,9 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
 def ServerSocket(connection: socket, address: "_RetAddress"):
     client_IP = "%s:%s" % address # e.g., "127.0.0.1:8080"
 
-    session = Session(time(), f"{address[0]}:{address[1]}-{str(uuid4())}")
-    log(f"Started session (id={session.id})")
-
     with connection:
         try:
-            rec = session.start
+            rec = time()
 
             if not WaitReadable(connection, 5):
                 warn(f"Connection with client at \x1b[33m{client_IP}\x1b[0m timed out: closing connection...")
