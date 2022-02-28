@@ -11,6 +11,7 @@ from re import IGNORECASE, split
 from threading import Thread
 from time import sleep, time
 from itertools import chain
+from fnmatch import fnmatch
 from http import HTTPStatus
 from chardet import detect
 from select import select
@@ -24,6 +25,9 @@ if TYPE_CHECKING:
 
 with open("metadata.txt") as f:
     DOMAIN, CERTPATH, CONTENTPATH = f.read().strip().split(";", 2)
+
+with open(CONTENTPATH + "exclude.glob") as f:
+    HIDDEN = f.readlines()
 
 basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -220,19 +224,18 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                 raise ConnectionAbortedError
 
             while IsAlive(connection, rec):
-                rdata = [b""]
+                rdata = b""
+
+                connection.settimeout(0.1)
 
                 while select([connection], [], [], 0)[0] and IsAlive(connection, rec): # connection is ready to read
-                    to = connection.gettimeout()
-                    connection.settimeout(0)
+                    rdata += connection.recv(4096)
 
-                    rdata.append(connection.recv(1024))
+                connection.settimeout(None)
 
-                    connection.settimeout(to)
-
-                if len(rdata) - 1 and IsAlive(connection, rec): # succesfully recieved data
+                if len(rdata) and IsAlive(connection, rec): # succesfully recieved data
                     try:
-                        req = ParseHTTP(b"".join(rdata))
+                        req = ParseHTTP(rdata)
                     except Exception:
                         warn(f"Client at \x1b[33m{client_IP}\x1b[0m sent chunked data, which is not yet supported: closing socket...")
 
@@ -257,7 +260,11 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                             path += ".html"
 
                         try:
-                            with open(f"{CONTENTPATH}{path}") as f:
+                            for p in HIDDEN:
+                                if fnmatch(path, p.strip()):
+                                    raise FileNotFoundError
+
+                            with open(CONTENTPATH + path) as f:
                                 content, status = f.read(), HTTPStatus.OK
 
                             mimetype = GetMIMEType(CONTENTPATH + path)
@@ -275,7 +282,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                 else:
                     resp = None
 
-                if resp and select([], [connection], [], 0)[1] and len(rdata) - 1 and IsAlive(connection, rec):
+                if resp and select([], [connection], [], 0)[1] and len(rdata) and IsAlive(connection, rec):
                     connection.send(resp)
                     log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
 
@@ -317,80 +324,15 @@ def Server():
         except OSError as e:
             return warn(e)        
 
-def Client():
-    client = socket(AF_INET, SOCK_STREAM)
-
-    if RESET:
-        return ResetSocket(client, 0.5)
-
-    client.bind((ADDRESS, 4242))
-    log("Bound to \x1b[33m%s\x1b[0m on port \x1b[33m%s\x1b[0m." % client.getsockname())
-
-    with client:
-        try:
-            client.connect((ADDRESS, PORT))
-            log(f"Requested connection to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
-
-            sleep(0.1)
-
-            if not IsAlive(client):
-                raise ConnectionRefusedError()
-
-            client.send(b"HTTP/1.1 200 OK\nContent-Type: text/plain\nConnection: Keep-Alive\n\nHello, world!")
-            log(f"Successfully sent packet(s) to server.")
-        except ConnectionRefusedError:
-            warn(f"Server denied connection to port \x1b[33m{PORT}\x1b[0m: closing socket...")
-
-            return log("Successfully closed socket.")
-        except OSError as e:
-            return warn(e)
-
-        try:
-            if not WaitReadable(client, 2):
-                raise ConnectionError
-
-            rdata = [b""]
-
-            while select([client], [], [], 0.1)[0]:
-                to = client.gettimeout()
-                client.settimeout(0.1)
-
-                rdata.append(client.recv(1024))
-
-                client.settimeout(to)
-
-            if len(rdata) - 1  and IsAlive(client): # succesfully recieved data
-                resp: HTTPResponseExt = ParseHTTP(b"".join(rdata))
-
-                log(f"Successfully received packet(s) from server:\n\t" + ("\x1b[32m" if resp.ok else "\x1b[31m") + resp.text.replace("\n", "\n\t") + "\x1b[0m")
-
-            SendShutdown(client, "server")
-        except ConnectionError:
-            sleep(0.1)
-
-            warn(f"Server closed connection to port \x1b[33m{PORT}\x1b[0m unexpectedly: closing socket...")
-
-            return log("Successfully closed socket.")
-
-    log("Successfully closed connection.")
-
 
 if __name__ == "__main__":
     t = time()
 
-    while ProcessAlive("TIME_WAIT", ADDRESS, [4242, PORT]):
+    while ProcessAlive("TIME_WAIT", ADDRESS, [4242, PORT]) and not RESET:
         log(f"\rTIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A")
-
-    log("")
 
 
     serverT = Thread(target=Server, name="Server", daemon=True)
-    # clientT = Thread(target=Client, name="Client", daemon=True)
 
     serverT.start()
     serverT.join()
-
-    # clientT.start()
-    # clientT.join()
-
-    # sleep(2)
