@@ -17,7 +17,6 @@ from http import HTTPStatus
 from chardet import detect
 from select import select
 from os import PathLike
-from uuid import uuid4
 
 if TYPE_CHECKING:
     from socket import _RetAddress
