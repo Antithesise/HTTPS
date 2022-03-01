@@ -39,6 +39,7 @@ add_type("text/css", ".css", True)
 
 try:
     ADDRESS = gethostbyname(DOMAIN)
+    PORT = int(PORT)
 except:
     ADDRESS = "127.0.0.1"
     PORT = 5000
