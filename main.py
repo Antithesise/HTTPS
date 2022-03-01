@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 with open("metadata.txt") as f:
-    DOMAIN, PORT, CERTPATH, CONTENTPATH = f.read().strip().split(";", 2)
+    DOMAIN, PORT, CERTPATH, CONTENTPATH = f.read().strip().split(";")
 
 with open(CONTENTPATH + "exclude.glob") as f:
     HIDDEN = f.readlines()
