@@ -1,9 +1,10 @@
-from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, NamedTuple, Optional
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
+from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from logging import INFO, basicConfig, info as log, warning as warn
 from requests.structures import CaseInsensitiveDict
 from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
+from urllib.parse import urlparse, parse_qs
 from mimetypes import add_type, guess_type
 from email.utils import formatdate
 from lxml.html import fromstring
@@ -14,6 +15,7 @@ from time import sleep, time
 from itertools import chain
 from fnmatch import fnmatch
 from http import HTTPStatus
+from importlib import util
 from chardet import detect
 from select import select
 from os import PathLike
@@ -57,6 +59,14 @@ class HTTPResponseExt(HTTPResponse):
     request_url: Optional[str] = None
     encoding: str = "utf-8"
 
+
+def RunAPI(path: str, query: dict) -> Any:
+    spec = util.spec_from_file_location(path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path)
+    
+    script = util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    
+    return script.run(query)
 
 def GetMIMEType(fname: str) -> str:
     return (guess_type(fname)[0] or "text/plain")
@@ -247,32 +257,45 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                     elif req.head.startswith("get"):
                         if req.request_url:
-                            try:
-                                path, post = (req.request_url.strip("/") or "index").split("?", 1)
-                            except ValueError:
-                                path, post = (req.request_url.strip("/") or "index"), ""
+                            path = (req.request_url.strip("/").replace("../", "") or "index")
+                            post = parse_qs(urlparse(path).query)
+                            path = path.rsplit("?", 1)[0].strip()
                         else:
                             path = "index"
+                            post = {}
 
                         if "." not in path.rsplit("/", 1)[-1]:
                             path += ".html"
 
-                        try:
-                            for p in HIDDEN:
-                                if fnmatch(path, p.strip()):
-                                    raise FileNotFoundError
+                        if path.startswith("api/") and path.endswith(".py"):
+                            try:
+                                with open(CONTENTPATH + path) as f:
+                                    content, mimetype, status = *RunAPI(CONTENTPATH + path, post), HTTPStatus.OK
+                                    
+                            except FileNotFoundError:
+                                log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
 
-                            with open(CONTENTPATH + path) as f:
-                                content, status = f.read(), HTTPStatus.OK
+                                with open(f"{CONTENTPATH}404.html") as f:
+                                    content, status = f.read(), HTTPStatus.NOT_FOUND
 
-                            mimetype = GetMIMEType(CONTENTPATH + path)
-                        except FileNotFoundError:
-                            log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+                                mimetype = "text/html"
+                        else:
+                            try:
+                                for p in HIDDEN:
+                                    if fnmatch(path, p.strip()):
+                                        raise FileNotFoundError
 
-                            with open(f"{CONTENTPATH}404.html") as f:
-                                content, status = f.read(), HTTPStatus.NOT_FOUND
+                                with open(CONTENTPATH + path) as f:
+                                    content, status = f.read(), HTTPStatus.OK
 
-                            mimetype = "text/html"
+                                mimetype = GetMIMEType(CONTENTPATH + path)
+                            except FileNotFoundError:
+                                log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+
+                                with open(f"{CONTENTPATH}404.html") as f:
+                                    content, status = f.read(), HTTPStatus.NOT_FOUND
+
+                                mimetype = "text/html"
 
                     resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
 
