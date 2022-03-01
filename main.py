@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 with open("metadata.txt") as f:
-    DOMAIN, CERTPATH, CONTENTPATH = f.read().strip().split(";", 2)
+    DOMAIN, PORT, CERTPATH, CONTENTPATH = f.read().strip().split(";", 2)
 
 with open(CONTENTPATH + "exclude.glob") as f:
     HIDDEN = f.readlines()
@@ -39,7 +39,6 @@ add_type("text/css", ".css", True)
 
 try:
     ADDRESS = gethostbyname(DOMAIN)
-    PORT = 8080
 except:
     ADDRESS = "127.0.0.1"
     PORT = 5000
