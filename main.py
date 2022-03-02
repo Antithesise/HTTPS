@@ -206,12 +206,13 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
 
     headers["Content-Security-Policy"] = "upgrade-insecure-requests"
     headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    headers["Service-Worker-Allowed"] = "/"
 
     headers["X-Auto-Generated-By"] = "CreateHTTP (c) GoodCoderBBoy 2022"
 
     head = f"{(method or '').upper()}{(url + ' ' or '/ ') if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
 
-    head = head.encode(detect(body)["encoding"])
+    head = head.encode(detect(body)["encoding"] or "utf-8")
 
     return head + body, status._value_
 
@@ -285,8 +286,12 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                     if fnmatch(path, p.strip()):
                                         raise FileNotFoundError
 
-                                with open(CONTENTPATH + path) as f:
-                                    content, status = f.read(), HTTPStatus.OK
+                                try:
+                                    with open(CONTENTPATH + path) as f:
+                                        content, status = f.read(), HTTPStatus.OK
+                                except UnicodeDecodeError:
+                                    with open(CONTENTPATH + path, "rb") as f:
+                                        content, status = f.read(), HTTPStatus.OK
 
                                 mimetype = GetMIMEType(CONTENTPATH + path)
                             except FileNotFoundError:
@@ -305,7 +310,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                 if resp and select([], [connection], [], 0)[1] and len(rdata) and IsAlive(connection, rec):
                     connection.send(resp)
-                    log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8").replace("\n", "\n\t") + "\x1b[0m")
+                    log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8", errors="replace").replace("\n", "\n\t") + "\x1b[0m")
 
                     rec = time()
 
