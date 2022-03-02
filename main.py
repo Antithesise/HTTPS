@@ -208,8 +208,6 @@ def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: Path
     headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     headers["Service-Worker-Allowed"] = "/"
 
-    headers["X-Auto-Generated-By"] = "CreateHTTP (c) GoodCoderBBoy 2022"
-
     head = f"{(method or '').upper()}{(url + ' ' or '/ ') if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
 
     head = head.encode(detect(body)["encoding"] or "utf-8")
