@@ -60,6 +60,9 @@ class HTTPResponseExt(HTTPResponse):
     encoding: str = "utf-8"
 
 
+def GetPrintable(string: str) -> str:
+    return "".join([c for c in string if c.isprintable() or c in "\n\t"])
+
 def RunAPI(path: str, query: dict) -> Any:
     spec = util.spec_from_file_location(path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path)
     
@@ -247,7 +250,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                     sleep(0.1)
 
-                    log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + req.text.replace("\n", "\n\t") + "\x1b[0m")
+                    log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m")
 
                     headers = dict(req.headers)
 
@@ -265,7 +268,10 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                             post = {}
 
                         if "." not in path.rsplit("/", 1)[-1]:
-                            path += ".html"
+                            if path.startswith("api/"):
+                                path += ".py"
+                            else:
+                                path += ".html"
 
                         if path.startswith("api/") and path.endswith(".py"):
                             try:
@@ -309,7 +315,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                 if resp and select([], [connection], [], 0)[1] and len(rdata) and IsAlive(connection, rec):
                     connection.send(resp)
-                    log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + resp.decode("utf-8", errors="replace").replace("\n", "\n\t") + "\x1b[0m")
+                    log(f"Successfully sent packet(s) to client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if status < 400 else "\x1b[31m") + GetPrintable(resp.decode("utf-8", errors="replace")).replace("\n", "\n\t") + "\x1b[0m")
 
                     rec = time()
 
