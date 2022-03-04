@@ -252,6 +252,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     headers = dict(req.headers)
 
                     if "close" in headers.get("connection"):
+                        SendShutdown(connection, client_IP)
                         break
 
                     elif req.head.startswith("get"):
