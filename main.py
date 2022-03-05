@@ -260,12 +260,15 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                     elif req.head.startswith("get"):
                         if req.request_url:
-                            path = (req.request_url.strip("/").replace("../", "") or "index")
+                            path = (req.request_url.replace("../", "").strip("/") or "index")
                             post = parse_qs(urlparse(path).query)
                             path = path.rsplit("?", 1)[0].strip()
                         else:
                             path = "index"
                             post = {}
+                        
+                        if path == "api": # root api dir
+                            path += "/index"
 
                         if "." not in path.rsplit("/", 1)[-1]:
                             if path.startswith("api/"):
@@ -362,5 +365,4 @@ if __name__ == "__main__":
     while ProcessAlive("TIME_WAIT", ADDRESS, [4242, PORT]) and not RESET:
         log(f"\rTIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A")
 
-
-    target=Server()
+    Server()
