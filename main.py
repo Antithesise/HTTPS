@@ -1,6 +1,6 @@
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
-from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from logging import INFO, basicConfig, error, info as log, warning as warn
+from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from requests.structures import CaseInsensitiveDict
 from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
@@ -17,6 +17,7 @@ from fnmatch import fnmatch
 from http import HTTPStatus
 from importlib import util
 from chardet import detect
+from os.path import exists
 from select import select
 from os import PathLike
 
@@ -275,7 +276,10 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                             if path.startswith("api/"):
                                 path += ".py"
                             else:
-                                path += ".html"
+                                if exists(path + ".html"):
+                                    path += ".html"
+                                elif exists(path + ".py"):
+                                    path += ".html"
 
                         if path.startswith("api/") and path.endswith(".py"):
                             try:
@@ -283,7 +287,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                     content, mimetype, status = *RunAPI(CONTENTPATH + path, post), HTTPStatus.OK
                                     
                             except FileNotFoundError:
-                                log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+                                log(f"{CONTENTPATH}{path} returned error, sending 404")
 
                                 with open(f"{CONTENTPATH}404.html") as f:
                                     content, status = f.read(), HTTPStatus.NOT_FOUND
