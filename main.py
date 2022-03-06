@@ -281,7 +281,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                 elif exists(path + ".py"):
                                     path += ".html"
 
-                        if path.startswith("api/") and path.endswith(".py"):
+                        if path.endswith(".py"):
                             try:
                                 with open(CONTENTPATH + path) as f:
                                     content, mimetype, status = *RunAPI(CONTENTPATH + path, post), HTTPStatus.OK
