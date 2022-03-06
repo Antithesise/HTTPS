@@ -70,7 +70,10 @@ def RunAPI(path: str, query: dict) -> Any:
     script = util.module_from_spec(spec)
     spec.loader.exec_module(script)
     
-    return script.run(query)
+    try:
+        return script.run(query)
+    except AttributeError:
+        return script.main(query)
 
 def GetMIMEType(fname: str) -> str:
     return (guess_type(fname)[0] or "text/plain")
