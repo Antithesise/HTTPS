@@ -263,7 +263,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                         if req.request_url:
                             path = (req.request_url.replace("../", "").strip("/") or "index")
                             post = parse_qs(urlparse(path).query)
-                            path = path.rsplit("?", 1)[0].strip()
+                            path = path.split("?", 1)[0].strip()
                         else:
                             path = "index"
                             post = {}
