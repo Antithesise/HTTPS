@@ -1,6 +1,6 @@
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
-from logging import INFO, basicConfig, info as log, warning as warn
+from logging import INFO, basicConfig, error, info as log, warning as warn
 from requests.structures import CaseInsensitiveDict
 from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
@@ -254,7 +254,8 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                     headers = dict(req.headers)
 
-                    if "close" in headers.get("connection"):
+
+                    if "close" in (headers.get("connection") or []):
                         SendShutdown(connection, client_IP)
                         break
 
@@ -356,7 +357,7 @@ def Server():
         except ConnectionRefusedError: # client is on blacklist
             continue
         except OSError as e:
-            return warn(e)        
+            return error(e)  
 
 
 if __name__ == "__main__":
