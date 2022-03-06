@@ -276,10 +276,10 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                             path += "/index"
 
                         if "." not in path.rsplit("/", 1)[-1]:
-                            if exists(path + ".html"):
+                            if exists(CONTENTPATH + path + ".html"):
                                 path += ".html"
-                            elif exists(path + ".py"):
-                                path += ".html"
+                            elif exists(CONTENTPATH + path + ".py"):
+                                path += ".py"
 
                         if path.endswith(".py"):
                             try:
