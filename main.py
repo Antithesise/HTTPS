@@ -293,6 +293,13 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                     content, status = f.read(), HTTPStatus.NOT_FOUND
 
                                 mimetype = "text/html"
+                            except Exception:
+                                warn(f"Internal server error at {CONTENTPATH + path}, sending 500")
+
+                                with open(f"{CONTENTPATH}500.html") as f:
+                                    content, status = f.read(), HTTPStatus.INTERNAL_SERVER_ERROR
+
+                                    mimetype = "text/html"
                         else:
                             try:
                                 for p in HIDDEN:
