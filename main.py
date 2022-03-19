@@ -227,7 +227,7 @@ def SendShutdown(connection: socket, recipient: str) -> bool:
 
         return False
 
-def CreateHTTP(body: Optional[str | bytes]=None, method: Optional[str]=None, url: Optional[PathLike]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus.OK, headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
+def CreateHTTP(body: Optional[str | bytes]=None, method: Optional[str]=None, url: Optional[PathLike]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus(200), headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
     if type(headers) != CaseInsensitiveDict:
         headers = CaseInsensitiveDict(headers)
 
@@ -338,6 +338,8 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     except Exception as e:
                         if type(e) == client.HTTPException: 
                             status: int = e.args[0]
+                        elif type(e) == FileNotFoundError:
+                            status = 404
                         else:
                             warn(f"Internal server error, sending 500")
 
