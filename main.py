@@ -313,7 +313,8 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     except Exception:
                         if status == 0:
                             warn(f"404 returned by {CONTENTPATH}{path}, sending 404")
-                            status = 400
+                            
+                            status = 404
 
                         with open(f"{CONTENTPATH}errors/{status}.html") as f:
                             content = f.read()
