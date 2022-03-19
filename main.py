@@ -6,6 +6,7 @@ from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
 from urllib.parse import urlparse, parse_qs
 from mimetypes import add_type, guess_type
+from http import client, HTTPStatus
 from email.utils import formatdate
 from lxml.html import fromstring
 from urllib3 import HTTPResponse
@@ -14,7 +15,6 @@ from threading import Thread
 from time import sleep, time
 from itertools import chain
 from fnmatch import fnmatch
-from http import HTTPStatus
 from importlib import util
 from chardet import detect
 from os.path import exists
@@ -235,7 +235,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                 raise ConnectionAbortedError
 
             while IsAlive(connection, rec):
-                rdata = b""
+                rdata, status = b"", 0
 
                 connection.settimeout(0.1)
 
@@ -248,72 +248,77 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     try:
                         req = ParseHTTP(rdata)
                     except Exception:
-                        warn(f"Client at \x1b[33m{client_IP}\x1b[0m sent chunked data, which is not yet supported: closing socket...")
+                        warn("Client sent bad request, sending 400")
 
-                        raise ConnectionAbortedError
+                        status = 400
 
                     sleep(0.1)
 
-                    log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m")
-
-                    headers = dict(req.headers)
-
-
-                    if "close" in (headers.get("connection") or []):
-                        SendShutdown(connection, client_IP)
-                        break
-
-                    elif req.head.startswith("get"):
-                        if req.request_url:
-                            path = (req.request_url.replace("../", "").strip("/") or "index")
-                            post = parse_qs(urlparse(path).query)
-                            path = path.split("?", 1)[0].strip()
-                        else:
-                            path = "index"
-                            post = {}
-                        
-                        if path == "api": # root api dir
-                            path += "/index"
-
-                        if "." not in path.rsplit("/", 1)[-1]:
-                            if exists(CONTENTPATH + path + ".html"):
-                                path += ".html"
-                            elif exists(CONTENTPATH + path + ".py"):
-                                path += ".py"
-
                     try:
+                        if status:
+                            raise client.HTTPException
+
+                        log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m")
+
+                        headers = dict(req.headers)
+
+                        if "close" in (headers.get("connection") or []):
+                            SendShutdown(connection, client_IP)
+                            break
+
+                        elif req.head.startswith("get"):
+                            if req.request_url:
+                                path = (req.request_url.replace("../", "").strip("/") or "index")
+                                post = parse_qs(urlparse(path).query)
+                                path = path.split("?", 1)[0].strip()
+                            else:
+                                path = "index"
+                                post = {}
+                            
+                            if path == "api": # root api dir
+                                path += "/index"
+
+                            if "." not in path.rsplit("/", 1)[-1]:
+                                if exists(CONTENTPATH + path + ".html"):
+                                    path += ".html"
+                                elif exists(CONTENTPATH + path + ".py"):
+                                    path += ".py"
+
                         if path.endswith(".py"):
                             try:
                                 with open(CONTENTPATH + path) as f:
                                     content, mimetype, status = RunAPI(CONTENTPATH + path, post)
 
                             except Exception:
-                                warn(f"Internal server error at {CONTENTPATH + path}, sending 500")
-
-                                with open(f"{CONTENTPATH}500.html") as f:
-                                    content, status = f.read(), HTTPStatus.INTERNAL_SERVER_ERROR
-
-                                    mimetype = "text/html"
+                                warn(f"Internal server error at {CONTENTPATH}{path}, sending 500")
+                                
+                                status = 500
+                                raise client.HTTPException
                         else:
                             for p in HIDDEN:
                                 if fnmatch(path, p.strip()):
-                                    raise FileNotFoundError
+                                    warn(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+
+                                    status = 404
+                                    raise client.HTTPException
 
                             try:
                                 with open(CONTENTPATH + path) as f:
-                                    content, status = f.read(), HTTPStatus.OK
+                                    content, status = f.read(), HTTPStatus(200)
                             except UnicodeDecodeError:
                                 with open(CONTENTPATH + path, "rb") as f:
-                                    content, status = f.read(), HTTPStatus.OK
+                                    content, status = f.read(), HTTPStatus(200)
 
                             mimetype = GetMIMEType(CONTENTPATH + path)
-                    except FileNotFoundError:
-                        log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+                    except Exception:
+                        if status == 0:
+                            warn(f"404 returned by {CONTENTPATH}{path}, sending 404")
+                            status = 400
 
-                        with open(f"{CONTENTPATH}404.html") as f:
-                            content, status = f.read(), HTTPStatus.NOT_FOUND
+                        with open(f"{CONTENTPATH}errors/{status}.html") as f:
+                            content = f.read()
 
-                        mimetype = "text/html"
+                        mimetype, status = "text/html", HTTPStatus(status)
 
                     resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
 
