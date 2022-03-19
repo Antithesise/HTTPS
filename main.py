@@ -256,7 +256,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     sleep(0.1)
 
                     try:
-                        if status:
+                        if status == 0:
                             raise client.HTTPException
 
                         log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m")
@@ -311,7 +311,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                     content, status = f.read(), HTTPStatus(200)
 
                             mimetype = GetMIMEType(CONTENTPATH + path)
-                    except Exception:
+                    except client.HTTPException:
                         if status == 0:
                             warn(f"404 returned by {CONTENTPATH}{path}, sending 404")
                             
