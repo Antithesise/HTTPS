@@ -1,3 +1,27 @@
+"""\
+A HTTP(S) server written entirely in Python3 using the socket lib.
+
+Format for creating an environment containing all relevant files:
+
+PATH/TO/SCRIPTS/
+    main.py -> This file.
+    metadata.txt -> the Format is `FQDN;PORT;PATH/TO/CERTIFICATE/FILES/;PATH/TO/CONTENT/;`.
+
+PATH/TO/CONTENT/
+    api/ -> You can put api here, but it is not necessary.
+        index.html or index.py -> Also not necessary, path is `http(s)://FQDN/api/`.
+
+    exclude.glob -> A newline-separated list of glob patterns to hide files. `api/**`, `error.html` and `exclude.glob` are automatically added to this.
+    index.html or index.py -> The homepage, path is `http(s)://FQDN/`.
+    error.html -> A template for creating error pages: `{NUM}` is replaced by the error number, `{MSG}` is replaced by the error message.
+
+    [All other folders, html, css, and other content goes here]
+
+PATH/TO/CERTIFICATE/FILES/
+    FQDN.crt -> The crt file.
+    FQDN.key -> The key file.
+"""
+
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from logging import INFO, basicConfig, error, info as log, warning as warn
 from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
@@ -29,7 +53,7 @@ with open("metadata.txt") as f:
     DOMAIN, PORT, CERTPATH, CONTENTPATH = f.read().strip().split(";")
 
 with open(CONTENTPATH + "exclude.glob") as f:
-    HIDDEN = f.readlines()
+    HIDDEN = f.readlines() + "api/**;error.html;exclude.glob".split(";")
 
 basicConfig(format="(%(asctime)s) %(threadName)s (%(levelname)s): %(message)s", level=INFO, datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -71,9 +95,16 @@ def RunAPI(path: str, query: dict) -> Any:
     spec.loader.exec_module(script)
     
     try:
-        return script.run(query)
-    except AttributeError:
-        return script.main(query)
+        try:
+            return script.run(query)
+        except AttributeError:
+            return script.main(query)
+    except client.HTTPException as e:
+        raise client.HTTPException(e.args[0]) # stop purposeful errors from returning 500
+    except Exception:
+        warn(f"Internal server error at {CONTENTPATH}{path}, sending 500")
+
+        raise client.HTTPException(500)      
 
 def GetMIMEType(fname: str) -> str:
     return (guess_type(fname)[0] or "text/plain")
@@ -89,7 +120,7 @@ def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
 def IsHTML(text: str) -> bool:
     return fromstring(text).find(".//*") is not None
 
-def IsAlive(connection: socket, timeout: int | None=None) -> bool:
+def IsAlive(connection: socket, timeout: Optional[int]=None) -> bool:
     try:
         r = list(chain.from_iterable(select([connection], [connection], [], 5)))
     except:
@@ -97,7 +128,7 @@ def IsAlive(connection: socket, timeout: int | None=None) -> bool:
 
     return connection in r and (True if timeout is None else time() - timeout < 5)
 
-def WaitReadable(connection: socket, timeout: float | None=None) -> bool:
+def WaitReadable(connection: socket, timeout: Optional[float]=None) -> bool:
     t = time()
 
     while connection not in select([connection], [], [], 0)[0]:
@@ -108,7 +139,7 @@ def WaitReadable(connection: socket, timeout: float | None=None) -> bool:
 
     return True
 
-def FilterConnection(server: socket, blacklist: list["_RetAddress"]=[]) -> tuple[socket, "_RetAddress"] | None:
+def FilterConnection(server: socket, blacklist: list["_RetAddress"]=[]) -> Optional[tuple[socket, "_RetAddress"]]:
     connection, address = server.accept()
 
     if address in blacklist:
@@ -196,7 +227,7 @@ def SendShutdown(connection: socket, recipient: str) -> bool:
 
         return False
 
-def CreateHTTP(body: str | bytes | None=None, method: str | None=None, url: PathLike | None=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus.OK, headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
+def CreateHTTP(body: Optional[str | bytes]=None, method: Optional[str]=None, url: Optional[PathLike]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus.OK, headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
     if type(headers) != CaseInsensitiveDict:
         headers = CaseInsensitiveDict(headers)
 
@@ -236,7 +267,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                 raise ConnectionAbortedError
 
             while IsAlive(connection, rec):
-                rdata, status = b"", 0
+                rdata, status, post = b"", 0, {}
 
                 connection.settimeout(0.1)
 
@@ -248,16 +279,16 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                 if len(rdata) and IsAlive(connection, rec): # succesfully recieved data
                     try:
                         req = ParseHTTP(rdata)
-                    except Exception:
+                    except client.HTTPException as e:
                         warn("Client sent bad request, sending 400")
 
-                        status = 400
+                        status = e.args()
 
                     sleep(0.1)
 
                     try:
-                        if status == 0:
-                            raise client.HTTPException
+                        if status:
+                            raise client.HTTPException(status)
 
                         log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m")
 
@@ -274,7 +305,6 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                 path = path.split("?", 1)[0].strip()
                             else:
                                 path = "index"
-                                post = {}
                             
                             if path == "api": # root api dir
                                 path += "/index"
@@ -286,22 +316,16 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                     path += ".py"
 
                         if path.endswith(".py"):
-                            try:
-                                with open(CONTENTPATH + path) as f:
-                                    content, mimetype, status = RunAPI(CONTENTPATH + path, post)
+                            with open(CONTENTPATH + path) as f:
+                                content, mimetype, status = RunAPI(CONTENTPATH + path, post)
+                                # note that RunAPI either returns or raises HTTPException
 
-                            except Exception:
-                                warn(f"Internal server error at {CONTENTPATH}{path}, sending 500")
-                                
-                                status = 500
-                                raise client.HTTPException
                         else:
                             for p in HIDDEN:
                                 if fnmatch(path, p.strip()):
                                     warn(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
 
-                                    status = 404
-                                    raise client.HTTPException
+                                    raise client.HTTPException(404)
 
                             try:
                                 with open(CONTENTPATH + path) as f:
@@ -311,14 +335,16 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                     content, status = f.read(), HTTPStatus(200)
 
                             mimetype = GetMIMEType(CONTENTPATH + path)
-                    except client.HTTPException:
-                        if status == 0:
-                            warn(f"404 returned by {CONTENTPATH}{path}, sending 404")
-                            
-                            status = 404
+                    except Exception as e:
+                        if type(e) == client.HTTPException: 
+                            status: int = e.args[0]
+                        else:
+                            warn(f"Internal server error, sending 500")
 
-                        with open(f"{CONTENTPATH}errors/{status}.html") as f:
-                            content = f.read()
+                            status = 500
+
+                        with open(f"{CONTENTPATH}error.html") as f:
+                            content = f.read().format(NUM=status, MSG=client.responses.get(status))
 
                         mimetype, status = "text/html", HTTPStatus(status)
 
