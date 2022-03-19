@@ -281,18 +281,12 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                             elif exists(CONTENTPATH + path + ".py"):
                                 path += ".py"
 
+                    try:
                         if path.endswith(".py"):
                             try:
                                 with open(CONTENTPATH + path) as f:
-                                    content, mimetype, status = *RunAPI(CONTENTPATH + path, post), HTTPStatus.OK
-                                    
-                            except FileNotFoundError:
-                                log(f"{CONTENTPATH}{path} returned error, sending 404")
+                                    content, mimetype, status = RunAPI(CONTENTPATH + path, post)
 
-                                with open(f"{CONTENTPATH}404.html") as f:
-                                    content, status = f.read(), HTTPStatus.NOT_FOUND
-
-                                mimetype = "text/html"
                             except Exception:
                                 warn(f"Internal server error at {CONTENTPATH + path}, sending 500")
 
@@ -301,26 +295,25 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
 
                                     mimetype = "text/html"
                         else:
+                            for p in HIDDEN:
+                                if fnmatch(path, p.strip()):
+                                    raise FileNotFoundError
+
                             try:
-                                for p in HIDDEN:
-                                    if fnmatch(path, p.strip()):
-                                        raise FileNotFoundError
+                                with open(CONTENTPATH + path) as f:
+                                    content, status = f.read(), HTTPStatus.OK
+                            except UnicodeDecodeError:
+                                with open(CONTENTPATH + path, "rb") as f:
+                                    content, status = f.read(), HTTPStatus.OK
 
-                                try:
-                                    with open(CONTENTPATH + path) as f:
-                                        content, status = f.read(), HTTPStatus.OK
-                                except UnicodeDecodeError:
-                                    with open(CONTENTPATH + path, "rb") as f:
-                                        content, status = f.read(), HTTPStatus.OK
+                            mimetype = GetMIMEType(CONTENTPATH + path)
+                    except FileNotFoundError:
+                        log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
 
-                                mimetype = GetMIMEType(CONTENTPATH + path)
-                            except FileNotFoundError:
-                                log(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+                        with open(f"{CONTENTPATH}404.html") as f:
+                            content, status = f.read(), HTTPStatus.NOT_FOUND
 
-                                with open(f"{CONTENTPATH}404.html") as f:
-                                    content, status = f.read(), HTTPStatus.NOT_FOUND
-
-                                mimetype = "text/html"
+                        mimetype = "text/html"
 
                     resp, status = CreateHTTP(content, status=status, headers={"Content-Type": mimetype})
 
