@@ -184,7 +184,8 @@ def ResetSocket(s: socket, delay: float=0) -> None:
 
 def SendShutdown(connection: socket, recipient: str) -> bool:
     try:
-        connection.send(b"HTTP/1.1 204 NO CONTENT\nConnection: close\nContent-Type: text/plain")
+        connection.send(b"HTTP/1.1 408 REQUEST TIMEOUT\nConnection: close\nContent-Type: text/plain\nContent-Length: 0")
+
         log(f"Successfully sent packet(s) to {recipient}.")
         log(f"Closing connection with {recipient}...")
 
