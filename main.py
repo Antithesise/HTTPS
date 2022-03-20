@@ -20,11 +20,13 @@ PATH/TO/CONTENT/
 PATH/TO/CERTIFICATE/FILES/
     FQDN.crt -> The crt file.
     FQDN.key -> The key file.
+
+Note: All content generating files (E.g., those in /api/) should have a return type of `tuple[str | bytes, str, HTTPStatus]` (content, mimetype, status)
 """
 
+from typing import TYPE_CHECKING, Any, Mapping, Optional, TypedDict, overload, Protocol
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from logging import INFO, basicConfig, error, info as log, warning as warn
-from typing import IO, TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from requests.structures import CaseInsensitiveDict
 from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
@@ -47,6 +49,21 @@ from os import PathLike
 
 if TYPE_CHECKING:
     from socket import _RetAddress
+    
+    Content = str | bytes
+    MimeType = str
+
+    class DetectRes(TypedDict):
+        encoding: str
+        confidence: float
+        language: Any
+
+    class Script(Protocol):
+        def main(query: dict) -> tuple[Content, MimeType, HTTPStatus]: pass
+        def run(query: dict) -> tuple[Content, MimeType, HTTPStatus]: pass
+
+    @overload
+    def detect(byte_str) -> DetectRes: pass
 
 
 with open("metadata.txt") as f:
@@ -75,7 +92,7 @@ RESET = False
 class HTTPResponseExt(HTTPResponse):
     raw: str
     head: str = ""
-    body: bytes | IO[Any] | Iterable[bytes] | str = ""
+    body: "Content" = ""
     text: str = ""
     headers: Optional[Mapping[str, str] | Mapping[bytes, bytes]] = None
     status: int = 0
@@ -88,10 +105,10 @@ class HTTPResponseExt(HTTPResponse):
 def GetPrintable(string: str) -> str:
     return "".join([c for c in string if c.isprintable() or c in "\n\t"])
 
-def RunAPI(path: str, query: dict) -> Any:
+def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
     spec = util.spec_from_file_location(path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path)
     
-    script = util.module_from_spec(spec)
+    script: "Script" = util.module_from_spec(spec)
     spec.loader.exec_module(script)
     
     try:
@@ -106,7 +123,7 @@ def RunAPI(path: str, query: dict) -> Any:
 
         raise client.HTTPException(500)      
 
-def GetMIMEType(fname: str) -> str:
+def GetMIMEType(fname: str) -> "MimeType":
     return (guess_type(fname)[0] or "text/plain")
 
 def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
@@ -227,7 +244,7 @@ def SendShutdown(connection: socket, recipient: str) -> bool:
 
         return False
 
-def CreateHTTP(body: Optional[str | bytes]=None, method: Optional[str]=None, url: Optional[PathLike]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus(200), headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
+def CreateHTTP(body: Optional["Content"]=None, method: Optional[str]=None, url: Optional[PathLike]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus(200), headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
     if type(headers) != CaseInsensitiveDict:
         headers = CaseInsensitiveDict(headers)
 
