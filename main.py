@@ -119,7 +119,7 @@ def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
     except client.HTTPException as e:
         raise client.HTTPException(e.args[0]) # stop purposeful errors from returning 500
     except Exception:
-        warn(f"Internal server error at {CONTENTPATH}{path}, sending 500")
+        warn(f"Internal server error at {path}, sending 500")
 
         raise client.HTTPException(500)      
 
