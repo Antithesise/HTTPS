@@ -118,8 +118,8 @@ def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
             return script.main(query)
     except client.HTTPException as e:
         raise client.HTTPException(e.args[0]) # stop purposeful errors from returning 500
-    except Exception:
-        warn(f"Internal server error at {path}, sending 500")
+    except Exception as e:
+        warn(f"Internal server error at \x1b[33m{path}\x1b[0m, sending 500:\n\x1b[31m{e}\x1b[0m")
 
         raise client.HTTPException(500)      
 
@@ -160,13 +160,13 @@ def FilterConnection(server: socket, blacklist: list["_RetAddress"]=[]) -> Optio
     connection, address = server.accept()
 
     if address in blacklist:
-        log(f"Denied connection request to port {PORT} from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
+        log(f"Denied connection request to port \x1b[33m{PORT}\x1b[0m from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
 
         connection.close()
 
         raise ConnectionRefusedError()
 
-    log(f"Accepted connection request to port {PORT} from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
+    log(f"Accepted connection request to port \x1b[33m{PORT}\x1b[0m from client at \x1b[33m{address[0]}:{address[1]}\x1b[0m.")
 
     return connection, address
 
@@ -232,15 +232,17 @@ def ResetSocket(s: socket, delay: float=0) -> None:
 
 def SendShutdown(connection: socket, recipient: str) -> bool:
     try:
-        connection.send(b"HTTP/1.1 408 REQUEST TIMEOUT\nConnection: close\nContent-Type: text/plain\nContent-Length: 0")
+        connection.send(
+            b"HTTP/1.1 408 REQUEST TIMEOUT\nConnection: close\nContent-Type: text/plain\nContent-Length: 0"
+        )
 
-        log(f"Successfully sent packet(s) to {recipient}.")
-        log(f"Closing connection with {recipient}...")
+        log(f"Successfully sent packet(s) to \x1b[33m{recipient}\x1b[0m.")
+        log(f"Closing connection with \x1b[33m{recipient}\x1b[0m...")
 
         return True
     except:
-        warn(f"Failed to send packet(s) to {recipient}.")
-        log(f"Closing connection with {recipient}...")
+        warn(f"Failed to send packet(s) to \x1b[33m{recipient}\x1b[0m.")
+        log(f"Closing connection with \x1b[33m{recipient}\x1b[0m...")
 
         return False
 
@@ -358,7 +360,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                         elif type(e) == FileNotFoundError:
                             status = 404
                         else:
-                            warn(f"Internal server error, sending 500")
+                            warn(f"Internal server error, sending 500:\n\x1b[31m{e}\x1b[0m")
 
                             status = 500
 
@@ -420,6 +422,6 @@ if __name__ == "__main__":
     t = time()
 
     while ProcessAlive("TIME_WAIT", ADDRESS, [4242, PORT]) and not RESET:
-        log(f"\rTIME_WAIT is still active, waiting for it to exit (time elapsed = {round(time() - t, 2)}s).     \x1b[A")
+        log(f"\rTIME_WAIT is still active, waiting for it to exit (time elapsed = \x1b[33m{round(time() - t, 2)}s\x1b[0m).     \x1b[A")
 
     Server()
