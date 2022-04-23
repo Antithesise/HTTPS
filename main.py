@@ -178,11 +178,10 @@ def ParseHTTP(raw: bytes) -> HTTPResponseExt:
     except:
         head, body = raw, b""
 
-    if b"content-type" in head or b"content-encoding" in head:
-        if b"content-type" in head: 
-            encoding = head.split(b"charset", 1)[-1].split(b"\n")[0].strip().removeprefix(b"=").strip().decode("utf-8")
-        else:
-            encoding = head.split(b"content-encoding", 1)[-1].split(b"\n")[0].strip().decode("utf-8")
+    if b"content-type" in head:
+        encoding = head.split(b"charset", 1)[-1].split(b"\n")[0].strip().removeprefix(b"=").strip().decode("utf-8")
+    elif b"content-encoding" in head:
+        encoding = head.split(b"content-encoding", 1)[-1].split(b"\n")[0].strip().decode("utf-8")
     else:
         encoding = (detect(raw)["encoding"] or "utf-8")
 
