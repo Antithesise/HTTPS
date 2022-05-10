@@ -27,8 +27,8 @@ Note: All content generating files (E.g., those in /api/) should have a return t
 from typing import TYPE_CHECKING, Any, Mapping, Optional, TypedDict, overload, Protocol
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from logging import INFO, basicConfig, error, info as log, warning as warn
+from ssl import Purpose, SSLError, create_default_context
 from requests.structures import CaseInsensitiveDict
-from ssl import Purpose, create_default_context
 from psutil import NoSuchProcess, process_iter
 from urllib.parse import urlparse, parse_qs
 from mimetypes import add_type, guess_type
@@ -399,7 +399,7 @@ def Server():
     server.bind((ADDRESS, PORT))
     log(f"Bound to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
 
-    connections = []
+    connections: list[Thread] = []
 
     while True:
         server.listen()
@@ -413,8 +413,11 @@ def Server():
             connections[-1].start()
         except ConnectionRefusedError: # client is on blacklist
             continue
-        except OSError as e:
-            return error(e)  
+        except SSLError: # Certificate not recognised
+            continue
+        except Exception as e:
+
+            return error(e)
 
 
 if __name__ == "__main__":
