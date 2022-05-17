@@ -34,7 +34,6 @@ from urllib.parse import urlparse, parse_qs
 from mimetypes import add_type, guess_type
 from http import client, HTTPStatus
 from email.utils import formatdate
-from lxml.html import fromstring
 from urllib3 import HTTPResponse
 from re import IGNORECASE, split
 from threading import Thread
@@ -133,9 +132,6 @@ def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
         procs = []
 
     return bool(procs)
-
-def IsHTML(text: str) -> bool:
-    return fromstring(text).find(".//*") is not None
 
 def IsAlive(connection: socket, timeout: Optional[int]=None) -> bool:
     try:
@@ -411,12 +407,13 @@ def Server():
             connections.append(Thread(name=f"Server-{address[0]}:{address[1]}", target=ServerSocket, args=(context.wrap_socket(connection, server_side=True), address), daemon=True))
 
             connections[-1].start()
+        except WindowsError: # An established connection was aborted by the software in your host machine
+            continue
         except ConnectionRefusedError: # client is on blacklist
             continue
         except SSLError: # Certificate not recognised
             continue
         except Exception as e:
-
             return error(e)
 
 
