@@ -24,7 +24,7 @@ PATH/TO/CERTIFICATE/FILES/
 Note: All content generating files (E.g., those in /api/) should have a return type of `tuple[str | bytes, str, HTTPStatus]` (content, mimetype, status)
 """
 
-from typing import TYPE_CHECKING, Any, Mapping, Optional, TypedDict, overload, Protocol
+from typing import TYPE_CHECKING, Any, Mapping, Optional, TypedDict, Protocol
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from logging import INFO, basicConfig, error, info as log, warning as warn
 from ssl import Purpose, SSLError, create_default_context
@@ -60,9 +60,6 @@ if TYPE_CHECKING:
     class Script(Protocol):
         def main(query: dict) -> tuple[Content, MimeType, HTTPStatus]: pass
         def run(query: dict) -> tuple[Content, MimeType, HTTPStatus]: pass
-
-    @overload
-    def detect(byte_str) -> DetectRes: pass
 
 
 with open("metadata.txt") as f:
