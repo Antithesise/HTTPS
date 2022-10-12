@@ -24,7 +24,7 @@ PATH/TO/CERTIFICATE/FILES/
 Note: All content generating files (E.g., those in /api/) should have a return type of `tuple[str | bytes, str, HTTPStatus]` (content, mimetype, status)
 """
 
-from typing import TYPE_CHECKING, Any, Mapping, Optional, TypedDict, Protocol
+from typing import TYPE_CHECKING, Any, AnyStr, Mapping, Optional, TypedDict, Protocol
 from socket import AF_INET, IPPROTO_TCP, SOCK_STREAM, gethostbyname, socket
 from logging import INFO, basicConfig, error, info as log, warning as warn
 from ssl import Purpose, SSLError, create_default_context
@@ -47,6 +47,7 @@ from select import select
 from os import PathLike
 
 if TYPE_CHECKING:
+    from importlib.machinery import ModuleSpec
     from socket import _RetAddress
     
     Content = str | bytes
@@ -58,8 +59,8 @@ if TYPE_CHECKING:
         language: Any
 
     class Script(Protocol):
-        def main(query: dict) -> tuple[Content, MimeType, HTTPStatus]: pass
-        def run(query: dict) -> tuple[Content, MimeType, HTTPStatus]: pass
+        def main(self, query: dict[AnyStr, list[AnyStr]]) -> tuple[Content, MimeType, HTTPStatus]: ...
+        def run(self, query: dict[AnyStr, list[AnyStr]]) -> tuple[Content, MimeType, HTTPStatus]: ...
 
 
 with open("metadata.txt") as f:
@@ -104,6 +105,12 @@ def GetPrintable(string: str) -> str:
 def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
     spec = util.spec_from_file_location(path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path)
     
+    if spec is None:
+        warn(f"Couldn't find file \x1b[33m{CONTENTPATH}{path}\x1b[0m, sending 404")
+
+        raise client.HTTPException(404)
+
+
     script: "Script" = util.module_from_spec(spec)
     spec.loader.exec_module(script)
     
@@ -117,7 +124,7 @@ def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
     except Exception as e:
         warn(f"Internal server error at \x1b[33m{path}\x1b[0m, sending 500:\n\x1b[31m{e}\x1b[0m")
 
-        raise client.HTTPException(500)      
+        raise client.HTTPException(500)   
 
 def GetMIMEType(fname: str) -> "MimeType":
     return (guess_type(fname)[0] or "text/plain")
@@ -130,19 +137,19 @@ def ProcessAlive(name: str, ip: str, port: list[int]) -> bool:
 
     return bool(procs)
 
-def IsAlive(connection: socket, timeout: Optional[int]=None) -> bool:
+def IsAlive(connection: socket, timeout: Optional[float]=None) -> bool:
     try:
         r = list(chain.from_iterable(select([connection], [connection], [], 5)))
     except:
         r = []
 
-    return connection in r and (True if timeout is None else time() - timeout < 5)
+    return connection in r and (time() - timeout < 5 if timeout else True)
 
 def WaitReadable(connection: socket, timeout: Optional[float]=None) -> bool:
     t = time()
 
     while connection not in select([connection], [], [], 0)[0]:
-        if time() - t > timeout or not IsAlive(connection):
+        if time() - t > (timeout or 0) or not IsAlive(connection):
             warn("Connection timed out...")
 
             return False
@@ -201,7 +208,7 @@ def ParseHTTP(raw: bytes) -> HTTPResponseExt:
     else:
         url = None
 
-    res = HTTPResponseExt(body=body, headers=list(headers.items()), status=status_code, reason=reason, request_url=url)
+    res = HTTPResponseExt(body=body, headers=headers, status=status_code, reason=reason, request_url=url)
     res.raw = raw
     res.head = head
     res.body = body
@@ -238,9 +245,8 @@ def SendShutdown(connection: socket, recipient: str) -> bool:
 
         return False
 
-def CreateHTTP(body: Optional["Content"]=None, method: Optional[str]=None, url: Optional[PathLike]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus(200), headers: Mapping[str, str]={}, autolength: bool=True) -> tuple[bytes, int]:
-    if type(headers) != CaseInsensitiveDict:
-        headers = CaseInsensitiveDict(headers)
+def CreateHTTP(body: Optional["Content"]=None, method: Optional[str]=None, url: Optional[PathLike[str]]=None, httpversion: float=1.1, status: HTTPStatus=HTTPStatus(200), headers: Mapping[str, str] | CaseInsensitiveDict={}, autolength: bool=True) -> tuple[bytes, int]:
+    headers = CaseInsensitiveDict(headers)
 
     headers["Date"] = (headers.get("date") or formatdate(timeval=None, localtime=False, usegmt=True))
     headers["Connection"] = (headers.get("connection") or "close")
@@ -258,7 +264,7 @@ def CreateHTTP(body: Optional["Content"]=None, method: Optional[str]=None, url: 
     headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     headers["Service-Worker-Allowed"] = "/"
 
-    head = f"{(method or '').upper()}{(url + ' ' or '/ ') if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
+    head = f"{(method or '').upper()}{(url if url else '/') + ' ' if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
 
     head = head.encode(detect(body)["encoding"] or "utf-8")
 
@@ -334,7 +340,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                         else:
                             for p in HIDDEN:
                                 if fnmatch(path, p.strip()):
-                                    warn(f"Couldn't find file {CONTENTPATH}{path}, sending 404")
+                                    warn(f"Couldn't find file \x1b[33m{CONTENTPATH}{path}\x1b[0m, sending 404")
 
                                     raise client.HTTPException(404)
 
