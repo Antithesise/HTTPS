@@ -49,7 +49,7 @@ from os import PathLike
 if TYPE_CHECKING:
     from importlib.machinery import ModuleSpec
     from socket import _RetAddress
-    
+
     Content = str | bytes
     MimeType = str
 
@@ -104,16 +104,16 @@ def GetPrintable(string: str) -> str:
 
 def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
     spec = util.spec_from_file_location(path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path)
-    
+
     if spec is None:
         warn(f"Couldn't find file \x1b[33m{CONTENTPATH}{path}\x1b[0m, sending 404")
 
         raise client.HTTPException(404)
 
 
-    script: "Script" = util.module_from_spec(spec)
-    spec.loader.exec_module(script)
-    
+    script: "Script" = util.module_from_spec(spec) # type: ignore
+    spec.loader.exec_module(script) # type: ignore
+
     try:
         try:
             return script.run(query)
@@ -124,7 +124,7 @@ def RunAPI(path: str, query: dict) -> tuple["Content", "MimeType", HTTPStatus]:
     except Exception as e:
         warn(f"Internal server error at \x1b[33m{path}\x1b[0m, sending 500:\n\x1b[31m{e}\x1b[0m")
 
-        raise client.HTTPException(500)   
+        raise client.HTTPException(500)
 
 def GetMIMEType(fname: str) -> "MimeType":
     return (guess_type(fname)[0] or "text/plain")
@@ -209,7 +209,7 @@ def ParseHTTP(raw: bytes) -> HTTPResponseExt:
         url = None
 
     res = HTTPResponseExt(body=body, headers=headers, status=status_code, reason=reason, request_url=url)
-    res.raw = raw
+    res.raw = raw # type: ignore
     res.head = head
     res.body = body
     res.text = text
@@ -258,17 +258,17 @@ def CreateHTTP(body: Optional["Content"]=None, method: Optional[str]=None, url: 
         headers["Content-Length"] = str(len(body))
 
     if type(body) != bytes:
-        body = body.encode("utf-8")
+        body = body.encode("utf-8") # type: ignore
 
     headers["Content-Security-Policy"] = "upgrade-insecure-requests"
     headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     headers["Service-Worker-Allowed"] = "/"
 
-    head = f"{(method or '').upper()}{(url if url else '/') + ' ' if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n"
+    head = f"{(method or '').upper()}{(url if url else '/') + ' ' if method else ''}HTTP/{httpversion} {status._value_} {status.phrase}{chr(10) if len(headers) else ''}{chr(10).join([f'{k}: {v}' for k, v in headers.items()])}\n\n" # type: ignore
 
-    head = head.encode(detect(body)["encoding"] or "utf-8")
+    head = head.encode(detect(body)["encoding"] or "utf-8") # type: ignore
 
-    return head + body, status._value_
+    return head + body, status._value_ # type: ignore
 
 
 def ServerSocket(connection: socket, address: "_RetAddress"):
@@ -299,7 +299,7 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                     except client.HTTPException as e:
                         warn("Client sent bad request, sending 400")
 
-                        status = e.args()
+                        status = e.args() # type: ignore
 
                     sleep(0.1)
 
@@ -307,22 +307,22 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                         if status:
                             raise client.HTTPException(status)
 
-                        log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m")
+                        log(f"Successfully received packet(s) from client at \x1b[33m{client_IP}\x1b[0m:\n\t" + ("\x1b[32m" if req.ok else "\x1b[31m") + GetPrintable(req.text).replace("\n", "\n\t") + "\x1b[0m") # type: ignore
 
-                        headers = dict(req.headers)
+                        headers = dict(req.headers) # type: ignore
 
                         if "close" in (headers.get("connection") or []):
                             SendShutdown(connection, client_IP)
                             break
 
-                        elif req.head.startswith("get"):
-                            if req.request_url:
-                                path = (req.request_url.replace("../", "").strip("/") or "index")
+                        elif req.head.startswith("get"): # type: ignore
+                            if req.request_url: # type: ignore
+                                path = (req.request_url.replace("../", "").strip("/") or "index") # type: ignore
                                 post = parse_qs(urlparse(path).query)
                                 path = path.split("?", 1)[0].strip()
                             else:
                                 path = "index"
-                            
+
                             if path == "api": # root api dir
                                 path += "/index"
 
@@ -332,28 +332,28 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
                                 elif exists(CONTENTPATH + path + ".py"):
                                     path += ".py"
 
-                        if path.endswith(".py"):
-                            with open(CONTENTPATH + path) as f:
-                                content, mimetype, status = RunAPI(CONTENTPATH + path, post)
+                        if path.endswith(".py"): # type: ignore
+                            with open(CONTENTPATH + path) as f: # type: ignore
+                                content, mimetype, status = RunAPI(CONTENTPATH + path, post) # type: ignore
                                 # note that RunAPI either returns or raises HTTPException
 
                         else:
                             for p in HIDDEN:
-                                if fnmatch(path, p.strip()):
-                                    warn(f"Couldn't find file \x1b[33m{CONTENTPATH}{path}\x1b[0m, sending 404")
+                                if fnmatch(path, p.strip()): # type: ignore
+                                    warn(f"Couldn't find file \x1b[33m{CONTENTPATH}{path}\x1b[0m, sending 404") # type: ignore
 
                                     raise client.HTTPException(404)
 
                             try:
-                                with open(CONTENTPATH + path) as f:
+                                with open(CONTENTPATH + path) as f: # type: ignore
                                     content, status = f.read(), HTTPStatus(200)
                             except UnicodeDecodeError:
-                                with open(CONTENTPATH + path, "rb") as f:
+                                with open(CONTENTPATH + path, "rb") as f: # type: ignore
                                     content, status = f.read(), HTTPStatus(200)
 
-                            mimetype = GetMIMEType(CONTENTPATH + path)
+                            mimetype = GetMIMEType(CONTENTPATH + path) # type: ignore
                     except Exception as e:
-                        if type(e) == client.HTTPException: 
+                        if type(e) == client.HTTPException:
                             status: int = e.args[0]
                         elif type(e) == FileNotFoundError:
                             status = 404
@@ -384,8 +384,6 @@ def ServerSocket(connection: socket, address: "_RetAddress"):
             log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
         except ConnectionError:
             log(f"Client at \x1b[33m{client_IP}\x1b[0m closed connection: closing socket...")
-        except ConnectionAbortedError:
-            pass
 
     log(f"Successfully closed socket.")
 
@@ -405,16 +403,16 @@ def Server():
         log(f"Listening on \x1b[33m{ADDRESS}:{PORT}\x1b[0m.")
 
         try:
-            connection, address = FilterConnection(server) # chooses a client to connect to.
+            connection, address = FilterConnection(server) # type: ignore | chooses a client to connect to.
 
             connections.append(Thread(name=f"Server-{address[0]}:{address[1]}", target=ServerSocket, args=(context.wrap_socket(connection, server_side=True), address), daemon=True))
 
             connections[-1].start()
         except WindowsError: # An established connection was aborted by the software in your host machine
             continue
-        except ConnectionRefusedError: # client is on blacklist
+        except ConnectionRefusedError: # type: ignore | client is on blacklist
             continue
-        except SSLError: # Certificate not recognised
+        except SSLError: # type: ignore | Certificate not recognised
             continue
         except Exception as e:
             return error(e)
