@@ -47,7 +47,6 @@ from select import select
 from os import PathLike
 
 if TYPE_CHECKING:
-    from importlib.machinery import ModuleSpec
     from socket import _RetAddress
 
     Content = str | bytes
