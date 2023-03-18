@@ -392,8 +392,13 @@ def Server():
     if RESET:
         return ResetSocket(server)
 
-    server.bind((ADDRESS, PORT))
-    log(f"Bound to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
+    try:
+        server.bind((ADDRESS, PORT))
+        log(f"Bound to \x1b[33m{ADDRESS}\x1b[0m on port \x1b[33m{PORT}\x1b[0m.")
+    except:
+        ResetSocket(server)
+        exit()
+
 
     connections: list[Thread] = []
 
